@@ -37,20 +37,23 @@ struct muxer {
     char *filename;
 };
 
-#define MUXER_INIT() (struct muxer) {\
-.output_ctx				= NULL,\
-                       .mutex					= PTHREAD_MUTEX_INITIALIZER,\
-                                                   .isStart				= 0,\
-                                                       .video_index			= -1,\
-                                                            .audio_index			= -1,\
-                                                                 .complete				= 0,\
-                                                                     .video_total_pts		= 0,\
-                                                                         .video_prev_pts			= -1,\
-                                                                              .audio_total_pts		= 0,\
-                                                                                  .audio_prev_pts			= -1,\
-                                                                                       .video_codecid			= AV_CODEC_ID_NONE,\
-                                                                                                          .fps					= 0.,\
-                                                                                                               .filename				= NULL,}
+#define MUXER_INIT()                        \
+    (struct muxer)                          \
+    {                                       \
+        .output_ctx = NULL,                 \
+        .mutex = PTHREAD_MUTEX_INITIALIZER, \
+        .isStart = 0,                       \
+        .video_index = -1,                  \
+        .audio_index = -1,                  \
+        .complete = 0,                      \
+        .video_total_pts = 0,               \
+        .video_prev_pts = -1,               \
+        .audio_total_pts = 0,               \
+        .audio_prev_pts = -1,               \
+        .video_codecid = AV_CODEC_ID_NONE,  \
+        .fps = 0.,                          \
+        .filename = NULL,                   \
+    }
 
 muxer_t *muxer_create(void)
 {
@@ -190,8 +193,6 @@ static inline int write_frame(muxer_t *muxer, AVPacket * pkt)
     return ret;
 }
 
-#include <stdio.h> // 确保包含了stdio.h头文件，以便使用printf
-
 static inline int __muxer_write_video(muxer_t *muxer, const void *data, int32_t len, int64_t pts, const unsigned char keyframe)
 {
     AVPacket pkt;
@@ -203,7 +204,7 @@ static inline int __muxer_write_video(muxer_t *muxer, const void *data, int32_t 
     if (pts < 0)
         pts = 0;
 
-    printf("原始PTS: %lld\n", pts); // 打印原始PTS值
+    printf("Original PTS: %lld\n", pts); // Print original PTS value
 
     pkt.flags = (keyframe) ? AV_PKT_FLAG_KEY : 0;
 
@@ -217,12 +218,12 @@ static inline int __muxer_write_video(muxer_t *muxer, const void *data, int32_t 
         muxer->video_total_pts += (int64_t)((1000000. / muxer->fps));
     }
 
-    printf("计算后的总PTS: %lld\n", muxer->video_total_pts); // 打印计算后的总PTS
+    printf("Calculated total PTS: %lld\n", muxer->video_total_pts); // Print calculated total PTS
 
     pkt.pts = muxer->video_total_pts;
     pkt.dts = muxer->video_total_pts;
 
-    printf("缩放前 - PTS: %lld, DTS: %lld\n", pkt.pts, pkt.dts); // 打印缩放前的PTS和DTS
+    printf("Before scaling - PTS: %lld, DTS: %lld\n", pkt.pts, pkt.dts); // Print PTS and DTS before scaling
 
     pkt.data = (uint8_t *)data;
     pkt.size = len;
@@ -232,7 +233,7 @@ static inline int __muxer_write_video(muxer_t *muxer, const void *data, int32_t 
     pkt.pts = av_rescale_q_rnd(pkt.pts, (AVRational){1, 1000000}, out_stream->time_base, AV_ROUND_NEAR_INF|AV_ROUND_PASS_MINMAX);
     pkt.dts = av_rescale_q_rnd(pkt.dts, (AVRational){1, 1000000}, out_stream->time_base, AV_ROUND_NEAR_INF|AV_ROUND_PASS_MINMAX);
 
-    printf("缩放后 - PTS: %lld, DTS: %lld\n", pkt.pts, pkt.dts); // 打印缩放后的PTS和DTS
+    printf("After scaling - PTS: %lld, DTS: %lld\n", pkt.pts, pkt.dts); // Print PTS and DTS after scaling
 
     pkt.pos = -1;
 
@@ -244,6 +245,7 @@ static inline int __muxer_write_video(muxer_t *muxer, const void *data, int32_t 
 
     return ret;
 }
+
 
 
 
@@ -302,16 +304,28 @@ int muxer_add_video_and_audio(muxer_t *muxer, int videocodecid, int width, int h
 
 
         //音频设备默认只支持g711a,ffmpeg没有修改的话只支持aac
-        out_stream->codecpar->codec_id = AV_CODEC_ID_AAC;
-        out_stream->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
-        out_stream->codecpar->format = AV_SAMPLE_FMT_S16;
-        out_stream->codecpar->channels = 1;
-        out_stream->codecpar->channel_layout = AV_CH_LAYOUT_MONO;
-        out_stream->codecpar->sample_rate = 8000;
-        out_stream->codecpar->bit_rate = 64 * 1024;
-        out_stream->codecpar->frame_size = 320;
-        out_stream->time_base = (AVRational){1, 1000};
-        out_stream->codecpar->codec_tag = 0;
+        // out_stream->codecpar->codec_id = AV_CODEC_ID_AAC;
+        // out_stream->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
+        // out_stream->codecpar->format = AV_SAMPLE_FMT_S16;
+        // out_stream->codecpar->channels = 1;
+        // out_stream->codecpar->channel_layout = AV_CH_LAYOUT_MONO;
+        // out_stream->codecpar->sample_rate = 48000;
+        // out_stream->codecpar->bit_rate = 64 * 1024;
+        // out_stream->codecpar->frame_size = 320;
+        // out_stream->time_base = (AVRational){1, 1000};
+        // out_stream->codecpar->codec_tag = 0;
+
+        out_stream->codecpar->codec_id = AV_CODEC_ID_AAC;           // AAC编解码器
+        out_stream->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;      // 音频流
+        out_stream->codecpar->format = AV_SAMPLE_FMT_FLTP;          // AAC LC 通常使用FLTP（浮点）格式
+        out_stream->codecpar->channels = 2;                         // 2个音频通道（立体声）
+        out_stream->codecpar->channel_layout = AV_CH_LAYOUT_STEREO; // 立体声通道布局
+        out_stream->codecpar->sample_rate = 48000;                  // 采样率设为48kHz
+        out_stream->codecpar->bit_rate = 128 * 1024;                // 假设比特率为128kbps，具体值可以根据需要调整
+        // out_stream->codecpar->frame_size = 不需要设置这个参数，因为对于AAC，frame_size可以是可变的。
+        out_stream->time_base = (AVRational){1, 1000};              // 时间基准，通常对于音频可以保持这个设置
+        // out_stream->codecpar->codec_tag = 0;                     // codec_tag通常不需要手动设置，除非有特定需求
+
 
 
 
@@ -404,9 +418,6 @@ static int __muxer_write_audio_pcma(muxer_t *muxer, const void *data, int32_t le
         muxer->audio_total_pts += (len * 1000 / 8);
     }
 
-
-
-
     pkt.pts = muxer->audio_total_pts;
 
     pkt.dts = pkt.pts;
@@ -440,13 +451,34 @@ int muxer_write_audio(muxer_t *muxer, const char *data, const int data_size, con
     if (muxer == NULL)
         return -1;
 
+    uint8_t *aac_data = NULL;
+    int aac_data_size = 0;
+    int adts_header_size = 7;
+
+    // 计算总长度
+    aac_data_size = data_size + adts_header_size;
+
+    // 分配缓冲区
+    aac_data = av_malloc(aac_data_size);
+
+    // 添加ADTS头
+    adts_header(aac_data, data_size, 
+                FF_PROFILE_AAC_LOW,
+                48000,
+                2);
+
+    // 拷贝AAC数据
+    memcpy(aac_data + adts_header_size, data, data_size);
+
     pthread_mutex_lock(&muxer->mutex);
 
     if (muxer->isStart == 1 && muxer->output_ctx != NULL && muxer->complete == 1) {
-        ret = __muxer_write_audio_pcma(muxer, data, data_size, pts);
+        ret = __muxer_write_audio_pcma(muxer, aac_data, aac_data_size, pts);
     }
 
     pthread_mutex_unlock(&muxer->mutex);
+
+    av_free(aac_data);
 
     return ret;
 }
