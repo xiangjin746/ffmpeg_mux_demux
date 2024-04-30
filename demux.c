@@ -4,14 +4,17 @@
 
 #define ADTS_HEADER_LEN  7;
 
-#define fftime_to_milliseconds(ts) (av_rescale(ts, 1000, AV_TIME_BASE))
-#define milliseconds_to_fftime(ms) (av_rescale(ms, AV_TIME_BASE, 1000))
+
+#define fftime_to_milliseconds(ts)              (av_rescale(ts, 1000, AV_TIME_BASE))
+#define milliseconds_to_fftime(ms, time_base)   (av_rescale((ms), (time_base).den, (time_base).num * 1000))
+
 
 #define DEMUXER_INIT() (struct demuxer) {\
 						.mutex = PTHREAD_MUTEX_INITIALIZER,\
 						.is_open = 0,\
 						.is_seek = 0,\
 						.fmt_ctx = NULL,\
+                        .time_base = AV_TIME_BASE,\
 						.video_stream_idx = -1,\
 						.audio_stream_idx = -1,\
 						.pkt = {0},\
@@ -242,6 +245,8 @@ int demuxer_open(demuxer_t *demuxer, const char *filename)
         demuxer->is_open = 1;
     }
 
+    demuxer->time_base = demuxer->fmt_ctx->streams[demuxer->video_stream_idx]->time_base;
+
     // 14. 解锁并返回
     pthread_mutex_unlock(&demuxer->mutex);
     return 0;
@@ -300,33 +305,39 @@ int demuxer_close(demuxer_t *demuxer)
 
 int demuxer_seek(demuxer_t *demuxer, int64_t m)
 {
-    
-    int ret = -2;// 1. 初始化返回值`ret`为-2，表示默认的错误状态。
-	int64_t seek_pos = milliseconds_to_fftime(m);// 2. 将`m`（毫秒）转换为对应的FFmpeg时间单位，存储在`seek_pos`中。
+    int ret = -2; // 1. 初始化返回值`ret`为-2,表示默认的错误状态。
+    int64_t seek_pos = milliseconds_to_fftime(m,demuxer->time_base); // 2. 将`m`(毫秒)转换为对应的FFmpeg时间单位,存储在`seek_pos`中。
     int64_t duration = -1;
-	int seek_by_bytes = 0;
+    int seek_by_bytes = 0;
 
-    // 3. 检查`demuxer`指针是否为`NULL`，如果是，则立即返回-1。
-    if (demuxer == NULL){
+    // 3. 检查`demuxer`指针是否为`NULL`,如果是,则立即返回-1。
+    if (demuxer == NULL) {
         fprintf(stderr, "demuxer_seek arg error.\n");
         return -1;
     }
-        
-    // 4. 锁定`demuxer`的互斥锁，保证线程安全。
+
+    // 4. 锁定`demuxer`的互斥锁,保证线程安全。
     pthread_mutex_lock(&demuxer->mutex);
 
-    // 5. 获取媒体持续时间，并将其从毫秒转换为FFmpeg的时间单位，存储在`duration`变量中。
-    duration = milliseconds_to_fftime(demuxer->secs);
-    
-    // 6. 判断是否通过字节进行跳转，这依赖于demuxer的格式上下文的`iformat`标志。
-    seek_by_bytes = !!(demuxer->fmt_ctx->iformat->flags & AVFMT_TS_DISCONT);
+    // 5. 获取媒体持续时间,并将其从毫秒转换为FFmpeg的时间单位,存储在`duration`变量中。
+    duration = milliseconds_to_fftime(demuxer->secs,demuxer->time_base);
+    printf("Media duration: %"PRId64" (FFmpeg time unit)\n", duration);
 
-    // 7. 如果解复用器是打开的状态（`is_open`> 0），根据是否通过字节跳转执行不同的逻辑：
+    // 6. 判断是否通过字节进行跳转,这依赖于demuxer的格式上下文的`iformat`标志。
+    seek_by_bytes = !!(demuxer->fmt_ctx->iformat->flags & AVFMT_TS_DISCONT);
+    printf("Seeking by bytes: %s\n", seek_by_bytes ? "Yes" : "No");
+
+    AVStream *st = demuxer->fmt_ctx->streams[demuxer->video_stream_idx];
+    av_log(NULL, AV_LOG_INFO, "Time base: %d/%d\n", st->time_base.num, st->time_base.den);
+
+
+    // 7. 如果解复用器是打开的状态(`is_open` > 0),根据是否通过字节跳转执行不同的逻辑：
     if (demuxer->is_open > 0)
     {
-        // 如果不通过字节跳转（`seek_by_bytes`为0）
+        // 如果不通过字节跳转(`seek_by_bytes`为0)
         if (!seek_by_bytes) {
             if (seek_pos < duration) {
+                printf("Time-based seek to position: %"PRId64"\n", seek_pos);
                 ret = avformat_seek_file(demuxer->fmt_ctx, demuxer->video_stream_idx, INT64_MIN, seek_pos, INT64_MAX, 0);
                 if (ret < 0) {
                     fprintf(stderr, "avformat_seek_file (time-based seek) failed: %s\n", av_err2str(ret));
@@ -341,17 +352,15 @@ int demuxer_seek(demuxer_t *demuxer, int64_t m)
         } else {
             double pos = avio_tell(demuxer->fmt_ctx->pb);
             m /= 1000;
-
             if (demuxer->fmt_ctx->bit_rate) {
                 m *= demuxer->fmt_ctx->bit_rate / 8.0;
             } else {
                 fprintf(stderr, "Warning: Bit rate information not available, using default value (600000 bytes/s)\n");
                 m *= 600000;
             }
-
             pos += m;
             int64_t file_size = avio_size(demuxer->fmt_ctx->pb);
-
+            printf("Byte-based seek to position: %"PRId64" (bytes)\n", (int64_t)pos);
             if (pos < file_size) {
                 ret = avformat_seek_file(demuxer->fmt_ctx, demuxer->video_stream_idx, INT64_MIN, pos, INT64_MAX, AVSEEK_FLAG_BYTE);
                 if (ret < 0) {
@@ -366,11 +375,13 @@ int demuxer_seek(demuxer_t *demuxer, int64_t m)
             }
         }
     }
-    
-    // 8. 设置`is_seek`标志为1，表示已执行跳转操作。
+
+    // 8. 设置`is_seek`标志为1,表示已执行跳转操作。
     demuxer->is_seek = 1;
+
     // 9. 解锁`demuxer`的互斥锁。
     pthread_mutex_unlock(&demuxer->mutex);
+
     // 10. 返回`ret`作为函数执行结果。
     return ret;
 }
@@ -398,9 +409,11 @@ int demuxer_read(demuxer_t *demuxer, void **data, int *len, int *is_video, int *
 
         if (demuxer->is_seek > 0) {
             while ((ret = av_read_frame(demuxer->fmt_ctx, &demuxer->pkt)) >= 0) {
-                if (demuxer->video_stream_idx == demuxer->pkt.stream_index && demuxer->pkt.flags & AV_PKT_FLAG_KEY)
+                if (demuxer->video_stream_idx == demuxer->pkt.stream_index && demuxer->pkt.flags & AV_PKT_FLAG_KEY) {
+                    // 找到关键帧,退出循环
+                    demuxer->is_seek = 0; // 清除seek标志位
                     break;
-                else
+                } else
                     av_packet_unref(&demuxer->pkt);
             }
 
@@ -424,6 +437,7 @@ int demuxer_read(demuxer_t *demuxer, void **data, int *len, int *is_video, int *
             *len = demuxer->pkt.size;
             *total = demuxer->secs;
             *cur = av_rescale_q(demuxer->pkt.pts, demuxer->st->time_base, AV_TIME_BASE_Q) / 1000;
+            printf("cur pts: %ld\n", demuxer->pkt.pts);
 
             if (demuxer->pkt.stream_index == demuxer->video_stream_idx) {
                 // 视频帧处理逻辑

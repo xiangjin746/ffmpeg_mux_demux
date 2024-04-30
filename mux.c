@@ -204,7 +204,7 @@ static inline int __muxer_write_video(muxer_t *muxer, const void *data, int32_t 
     if (pts < 0)
         pts = 0;
 
-    printf("Original PTS: %lld\n", pts); // Print original PTS value
+    // printf("Original PTS: %lld\n", pts); // Print original PTS value
 
     pkt.flags = (keyframe) ? AV_PKT_FLAG_KEY : 0;
 
@@ -218,12 +218,12 @@ static inline int __muxer_write_video(muxer_t *muxer, const void *data, int32_t 
         muxer->video_total_pts += (int64_t)((1000000. / muxer->fps));
     }
 
-    printf("Calculated total PTS: %lld\n", muxer->video_total_pts); // Print calculated total PTS
+    // printf("Calculated total PTS: %lld\n", muxer->video_total_pts); // Print calculated total PTS
 
     pkt.pts = muxer->video_total_pts;
     pkt.dts = muxer->video_total_pts;
 
-    printf("Before scaling - PTS: %lld, DTS: %lld\n", pkt.pts, pkt.dts); // Print PTS and DTS before scaling
+    // printf("Before scaling - PTS: %lld, DTS: %lld\n", pkt.pts, pkt.dts); // Print PTS and DTS before scaling
 
     pkt.data = (uint8_t *)data;
     pkt.size = len;
@@ -233,7 +233,7 @@ static inline int __muxer_write_video(muxer_t *muxer, const void *data, int32_t 
     pkt.pts = av_rescale_q_rnd(pkt.pts, (AVRational){1, 1000000}, out_stream->time_base, AV_ROUND_NEAR_INF|AV_ROUND_PASS_MINMAX);
     pkt.dts = av_rescale_q_rnd(pkt.dts, (AVRational){1, 1000000}, out_stream->time_base, AV_ROUND_NEAR_INF|AV_ROUND_PASS_MINMAX);
 
-    printf("After scaling - PTS: %lld, DTS: %lld\n", pkt.pts, pkt.dts); // Print PTS and DTS after scaling
+    // printf("After scaling - PTS: %lld, DTS: %lld\n", pkt.pts, pkt.dts); // Print PTS and DTS after scaling
 
     pkt.pos = -1;
 

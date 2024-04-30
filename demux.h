@@ -14,6 +14,7 @@ typedef struct demuxer{
     unsigned char is_open;
     unsigned char is_seek;
     AVFormatContext *fmt_ctx;
+    AVRational time_base;
     int video_stream_idx;
     int audio_stream_idx;
     AVPacket pkt;

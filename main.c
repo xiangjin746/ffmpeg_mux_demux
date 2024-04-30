@@ -65,12 +65,14 @@ int main(void)
 
 	printf("open ok\n");
 
+	printf("seek result:%d\n",demuxer_seek(demuxer,60000));
+
     for ( ;!quit ; ) {
 		ret = demuxer_read(demuxer, &data, &len, &is_video, &is_key, &total, &cur);
 		if (ret >= 0) {
 			if (add_video == 0) {
 				if(is_video && is_key) {
-					muxer_add_video_and_audio(muxer, MUXER_CODEC_H264, 800, 480, data, len);
+					muxer_add_video_and_audio(muxer, MUXER_CODEC_H265, 640, 720, data, len);
 					add_video = 1;
 				} else
 					continue;
